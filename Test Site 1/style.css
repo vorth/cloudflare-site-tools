@@ -1,0 +1,12 @@
+body {
+  font-family: Georgia, serif;
+  max-width: 40em;
+  margin: 2em auto;
+  padding: 0 1em;
+  line-height: 1.5;
+  color: #222;
+  background: #fdfdfb;
+}
+header { border-bottom: 1px solid #ccc; margin-bottom: 1.5em; }
+footer { border-top: 1px solid #ccc; margin-top: 2em; font-size: 0.9em; color: #666; }
+a { color: #1a5fb4; }
