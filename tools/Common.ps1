@@ -76,14 +76,88 @@ function Invoke-Cloudflare {
     try {
         $response = Invoke-RestMethod @params
     } catch {
-        $detail = $_.ErrorDetails.Message
-        if (-not $detail) { $detail = $_.Exception.Message }
-        throw "Cloudflare request failed ($Method $Path): $detail"
+        throw "Cloudflare request failed ($Method $Path):`n  $(Get-WebErrorDetail $_)"
     }
     if ($response.PSObject.Properties.Name -contains 'success' -and -not $response.success) {
-        throw "Cloudflare reported an error ($Method $Path): $($response.errors | ConvertTo-Json -Compress)"
+        throw "Cloudflare reported an error ($Method $Path):`n  $(Format-CloudflareErrors $response.errors)"
     }
     $response.result
+}
+
+# Cloudflare errors look like {code, message, error_chain}; error_chain lists underlying causes.
+function Format-CloudflareErrors($Errors) {
+    @(foreach ($e in $Errors) {
+        $text = if ($e.code) { "[$($e.code)] $($e.message)" } else { "$($e.message)" }
+        if ($e.source.pointer) { $text += " (at $($e.source.pointer))" }
+        if ($e.error_chain) { $text += " <- caused by: " + (Format-CloudflareErrors $e.error_chain) }
+        $text
+    }) -join "`n  "
+}
+
+# Read a response header from either Windows PowerShell 5.1 (WebHeaderCollection)
+# or PowerShell 7 (HttpResponseHeaders).
+function Get-ResponseHeader($Response, [string]$Name) {
+    $headers = $Response.Headers
+    if ($null -eq $headers) { return $null }
+    if ($headers -is [Net.WebHeaderCollection]) { return $headers[$Name] }
+    $values = $null
+    if ($headers.TryGetValues($Name, [ref]$values)) { return ($values -join ', ') }
+}
+
+# Get as much as possible out of a failed web request: the HTTP status, Cloudflare's
+# own error messages (or the raw response body), the Ray ID that Cloudflare support
+# can look up, and for network failures the underlying cause.
+function Get-WebErrorDetail($ErrorRecord) {
+    $exception = $ErrorRecord.Exception
+    $response = $exception.Response
+    $lines = @()
+
+    if (-not $response) {
+        # No HTTP response at all: a network/TLS/timeout failure. The useful text is
+        # usually in the inner exceptions, e.g. "An existing connection was forcibly closed".
+        $messages = @()
+        for ($e = $exception; $e; $e = $e.InnerException) {
+            if ($messages -notcontains $e.Message) { $messages += $e.Message }
+        }
+        return ($messages -join "`n  ")
+    }
+
+    $lines += "HTTP $([int]$response.StatusCode) $($response.StatusCode)"
+
+    # PowerShell usually puts the response body in ErrorDetails; when it doesn't
+    # (common in 5.1), read it from the response stream ourselves.
+    $body = $ErrorRecord.ErrorDetails.Message
+    if (-not $body -and $response.PSObject.Methods.Name -contains 'GetResponseStream') {
+        try {
+            $stream = $response.GetResponseStream()
+            if ($stream.CanSeek) { $stream.Position = 0 }
+            $body = (New-Object IO.StreamReader($stream)).ReadToEnd()
+        } catch { }
+    }
+
+    if ($body) {
+        $parsed = $null
+        try { $parsed = $body | ConvertFrom-Json } catch { }
+        if ($parsed -and $parsed.errors) {
+            $lines += Format-CloudflareErrors $parsed.errors
+        } elseif ($parsed -and $parsed.messages) {
+            $lines += Format-CloudflareErrors $parsed.messages
+        } else {
+            # Not Cloudflare API JSON, e.g. an HTML error page from Cloudflare's edge.
+            $text = ($body -replace '<(script|style)[\s\S]*?</\1>', ' ' -replace '<[^>]+>', ' ' -replace '\s+', ' ').Trim()
+            if ($text.Length -gt 500) { $text = $text.Substring(0, 500) + '...' }
+            $lines += $text
+        }
+    } else {
+        $lines += $exception.Message
+    }
+
+    $retryAfter = Get-ResponseHeader $response 'Retry-After'
+    if ($retryAfter) { $lines += "Cloudflare asked to retry after $retryAfter seconds." }
+    $ray = Get-ResponseHeader $response 'cf-ray'
+    if ($ray) { $lines += "Cloudflare Ray ID: $ray" }
+
+    $lines -join "`n  "
 }
 
 # Build a multipart/form-data body by hand (Windows PowerShell 5.1 has no -Form option).
