@@ -1,3 +1,6 @@
 @echo off
-rem Runs the shared Preview tool on the website in this folder.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\Preview.ps1" -SiteFolder "%~dp0."
+rem Preview this site at http://localhost:8787. Close the window to stop.
+cd /d "%~dp0"
+if not exist node_modules call npm ci --no-audit --no-fund
+call npx cf dev
+pause

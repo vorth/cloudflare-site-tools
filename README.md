@@ -1,75 +1,76 @@
 # Website tools
 
-This folder holds one or more websites and the tools for checking them and publishing them to Cloudflare.
-Nothing needs to be installed: the tools use PowerShell, which comes with Windows.
+This folder holds one or more websites, with buttons to preview them and publish them to Cloudflare.
+The buttons run Cloudflare's [`cf`](https://developers.cloudflare.com/cf/) tool, which needs Node.js.
 
 ```
 cloudflare-site-tools\
   Test Site 1\      <- one website
-    index.html         home page
-    about.html         a second page
-    style.css          colors and fonts
-    Preview.cmd        see this site in your browser
-    Publish.cmd        put this site on the internet
-    site.json          this site's name on Cloudflare
+    public\            the web pages. This is the only folder you edit.
+      index.html         home page
+      about.html         a second page
+      style.css          colors and fonts
+    Preview.cmd        see this site in your browser   (runs: cf dev)
+    Publish.cmd        put this site on the internet   (runs: cf deploy)
+    cloudflare.config.ts   this site's name on Cloudflare
+    (other files)      settings for cf. No need to open.
   Test Site 2\      <- another website, laid out the same way
-  tools\            <- shared by all sites
-    Setup.cmd          one time: connect this computer to Cloudflare
-    *.ps1              the PowerShell code behind the buttons. No need to open.
+  tools\
+    Setup.cmd          one time: install Node.js and sign in to Cloudflare
 ```
 
-To use a tool, **double-click** its `.cmd` file in File Explorer.
-Publish uploads only the web files. It never uploads `site.json` or the `.cmd` buttons.
+To use a button, **double-click** its `.cmd` file in File Explorer.
+Publish uploads only the `public` folder.
 
 ## Everyday use
 
-1. Open the folder of the site you want to change.
+1. Open the `public` folder of the site you want to change.
 2. **Edit** a page with Notepad and save it.
    Change only the text between tags, like the words inside `<p>` and `</p>`.
-3. **Preview**: double-click `Preview.cmd` in that folder. A small window opens and the
-   site appears in your browser at an address like `http://localhost:8787`.
-   After more edits, refresh the browser page to see them.
-   Close the small window when you're finished.
-4. **Publish**: double-click `Publish.cmd` in that folder and type `y` to confirm.
+3. **Preview**: double-click `Preview.cmd` in the site's folder. When the window shows
+   `http://localhost:8787`, press **b** to open the site in your browser.
+   After more edits, refresh the browser page to see them. Close the window when you're finished.
+   (The very first time, it spends a minute downloading the Cloudflare tools.)
+4. **Publish**: double-click `Publish.cmd` in the site's folder and press **Y** to confirm.
    It shows the web address when it's done.
 
-## One-time setup (done by whoever manages the Cloudflare account)
+## One-time setup
 
 1. In the Cloudflare dashboard, open **Workers & Pages** once, so the account has a
    `workers.dev` address.
-2. Create an API token: **My Profile > API Tokens > Create Token**, use the
-   **Edit Cloudflare Workers** template, and limit it to this account.
-3. Double-click `tools\Setup.cmd` and paste the token when asked. Setup finds the
-   account the token belongs to. If it can't, it asks for the account ID, which is the long
-   code after `dash.cloudflare.com/` in the browser's address bar.
-   The token is saved encrypted for this Windows user only, not in this folder.
-
-All sites publish to this one Cloudflare account.
+2. Double-click `tools\Setup.cmd`. If Node.js isn't installed, Setup installs it and asks
+   you to run Setup again. Then a browser window opens: sign in to Cloudflare and allow access.
 
 ## Adding a site
 
 1. Copy an existing site folder and rename the copy (for example `Bakery`).
-2. Open its `site.json` in Notepad and change `"name"`. Use lowercase letters, digits
+   Delete the copy's `node_modules` folder if it has one.
+2. Open its `cloudflare.config.ts` in Notepad and change `name`. Use lowercase letters, digits
    and dashes only. It becomes part of the address:
    `https://<name>.<account-subdomain>.workers.dev`
-3. Replace the pages with the new site's content.
-
-Site folders must sit next to the `tools` folder, because their buttons look for `..\tools`.
+3. Replace the pages in its `public` folder with the new site's content.
 
 ## Adding a page
 
-Copy `about.html`, rename the copy (for example `contact.html`), edit it, and add a link to it in the `<nav>` line of each page.
+In the `public` folder, copy `about.html`, rename the copy (for example `contact.html`), edit it,
+and add a link to it in the `<nav>` line of each page.
 
 ## If something goes wrong
 
-- *"isn't connected to Cloudflare yet"*: do the one-time setup above.
-- *"Cloudflare request failed ... Authentication error"*: the token is wrong or expired. Make a new one and run Setup again.
+- A message about signing in or authentication: run Setup again.
+- A message about the Node.js version: install the current LTS version from https://nodejs.org.
+- Download errors the first time: check the internet connection, delete the site's
+  `node_modules` folder, and try again.
 - A page looks broken: check that every tag you opened, like `<p>`, still has its closing `</p>`.
 
 ## For maintainers
 
-`tools\Publish.ps1 -SiteFolder <folder>` follows Cloudflare's
-[direct upload API](https://developers.cloudflare.com/workers/static-assets/direct-upload/):
-it hashes each web file, opens an upload session, uploads only the files Cloudflare asks for,
-then deploys a tiny Worker that points at those files.
-Add `-DryRun` to see what would be uploaded without contacting Cloudflare.
+`cf` is in beta. Each site pins exact `cf` and `wrangler` versions in `package.json` and
+`package-lock.json`; the buttons install them with `npm ci` and run that copy through `npx`, so a
+new `cf` release changes nothing until you update the versions on purpose (and the version in
+`tools\Setup.cmd`). Wrangler must be installed in the site folder because `cf` hands static sites to it.
+
+- `cloudflare.config.ts`: Worker name, compatibility date, `htmlHandling: "auto-trailing-slash"`.
+  If the Cloudflare login can see several accounts, add `accountId: "<id>"` next to `worker`.
+- `wrangler.config.ts`: `assetsDirectory: "./public"`.
+- To check a site without publishing it, run `npx cf deploy --dry-run` in its folder.

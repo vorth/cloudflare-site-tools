@@ -1,0 +1,8 @@
+{
+  "name": "test-site-2",
+  "private": true,
+  "devDependencies": {
+    "cf": "1.0.0-beta.27",
+    "wrangler": "4.156.2"
+  }
+}
