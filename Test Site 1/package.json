@@ -1,6 +1,7 @@
 {
   "name": "test-site-1",
   "private": true,
+  "type": "module",
   "devDependencies": {
     "cf": "1.0.0-beta.27",
     "wrangler": "4.156.2"
